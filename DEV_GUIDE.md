@@ -12,8 +12,8 @@
 ## Process Specific Env
 
 - They must start with ALL CAPS process id.
-- They will be passed to jobs with process id prefix removed. This allow setting 3rd party env variables such as GDAL_NUM_CPUS etc.
-- We are parsing at the job level so as to allow dynamic updates without having to restart server
+- They will be passed to jobs with process id prefix removed. This allow setting 3rd party env variables such as GDAL_NUM_CPUS etc. without collision risk.
+- We are parsing at the job level so as to allow dynamic updates without having to restart server.
 
 ## Auth
 
