@@ -17,7 +17,12 @@ import (
 	"github.com/labstack/gommon/log"
 )
 
-const DOCKER_NETWORK = "process_api_net"
+var DOCKER_NETWORK = func() string {
+	if v := os.Getenv("DOCKER_NETWORK"); v != "" {
+		return v
+	}
+	return "process_api_net"
+}()
 
 type ContainerInfo struct {
 	Exists   bool
@@ -76,17 +81,20 @@ func (c *DockerController) ContainerRun(ctx context.Context, imageName string, c
 	}
 	hostConfig.Mounts = mounts
 
-	err := createDockerNetwork(c.cli, ctx, DOCKER_NETWORK)
-	if err != nil {
-		log.Error(err)
-		return "", err
-	}
-
-	// Define the network mode
-	netConfig := &network.NetworkingConfig{
-		EndpointsConfig: map[string]*network.EndpointSettings{
-			DOCKER_NETWORK: {},
-		},
+	var netConfig *network.NetworkingConfig
+	if DOCKER_NETWORK == "host" {
+		hostConfig.NetworkMode = "host"
+	} else {
+		err := createDockerNetwork(c.cli, ctx, DOCKER_NETWORK)
+		if err != nil {
+			log.Error(err)
+			return "", err
+		}
+		netConfig = &network.NetworkingConfig{
+			EndpointsConfig: map[string]*network.EndpointSettings{
+				DOCKER_NETWORK: {},
+			},
+		}
 	}
 
 	resp, err := c.cli.ContainerCreate(ctx, &container.Config{
