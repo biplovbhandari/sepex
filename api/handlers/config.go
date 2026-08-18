@@ -249,10 +249,12 @@ func NewStorageService(providerType string) (*s3.S3, error) {
 		accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
 		secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
 
-		sess, err := session.NewSession(&aws.Config{
-			Region:      aws.String(region),
-			Credentials: credentials.NewStaticCredentials(accessKeyID, secretAccessKey, ""),
-		})
+		cfg := &aws.Config{Region: aws.String(region)}
+		if accessKeyID != "" && secretAccessKey != "" {
+			cfg.Credentials = credentials.NewStaticCredentials(accessKeyID, secretAccessKey, "")
+		}
+
+		sess, err := session.NewSession(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("error creating s3 session: %s", err.Error())
 		}

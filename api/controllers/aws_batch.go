@@ -69,13 +69,15 @@ func getResourceRequirement(resourceRequirements []*batch.ResourceRequirement, n
 }
 
 func NewAWSBatchController(accessKey, secretAccessKey, region string) (*AWSBatchController, error) {
-	sess, err := session.NewSession(&aws.Config{
-		Credentials: credentials.NewStaticCredentialsFromCreds(credentials.Value{
+	cfg := &aws.Config{Region: aws.String(region)}
+	if accessKey != "" && secretAccessKey != "" {
+		cfg.Credentials = credentials.NewStaticCredentialsFromCreds(credentials.Value{
 			AccessKeyID:     accessKey,
 			SecretAccessKey: secretAccessKey,
-		}),
-		Region: aws.String(region)},
-	)
+		})
+	}
+
+	sess, err := session.NewSession(cfg)
 	if err != nil {
 		return nil, err
 	}
