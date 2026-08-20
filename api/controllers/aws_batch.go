@@ -29,20 +29,21 @@ func (c *AWSBatchController) GetJobDefInfo(jobDef string) (JobDefinitionInfo, er
 	var jdi JobDefinitionInfo
 	resp, err := c.client.DescribeJobDefinitions(&batch.DescribeJobDefinitionsInput{
 		JobDefinitions: []*string{aws.String(jobDef)},
+		Status:         aws.String("ACTIVE"),
 	})
 
 	if err != nil {
 		return jdi, err
 	}
 
-	// Check if any job definitions were returned
-	if len(resp.JobDefinitions) != 1 {
-		return jdi, fmt.Errorf("did not get an exact match for job definitions")
+	if len(resp.JobDefinitions) == 0 {
+		return jdi, fmt.Errorf("no active job definition found for %s", jobDef)
 	}
 
-	// Retrieve the Image URI from the first job definition in the response
-	jdi.Image = aws.StringValue(resp.JobDefinitions[0].ContainerProperties.Image)
-	resourceRequirements := resp.JobDefinitions[0].ContainerProperties.ResourceRequirements
+	// Use the latest revision (last element, AWS returns in ascending order)
+	latest := resp.JobDefinitions[len(resp.JobDefinitions)-1]
+	jdi.Image = aws.StringValue(latest.ContainerProperties.Image)
+	resourceRequirements := latest.ContainerProperties.ResourceRequirements
 
 	// Extract vCPU and memory requirements
 	f64, err := strconv.ParseFloat(getResourceRequirement(resourceRequirements, "VCPU"), 32)
@@ -233,19 +234,19 @@ func (c *AWSBatchController) GetImageURI(jobDef string) (string, error) {
 
 	resp, err := c.client.DescribeJobDefinitions(&batch.DescribeJobDefinitionsInput{
 		JobDefinitions: []*string{aws.String(jobDef)},
+		Status:         aws.String("ACTIVE"),
 	})
 
 	if err != nil {
 		return "", err
 	}
 
-	// Check if any job definitions were returned
-	if len(resp.JobDefinitions) != 1 {
-		return "", fmt.Errorf("did not get an exact match for job definitions")
+	if len(resp.JobDefinitions) == 0 {
+		return "", fmt.Errorf("no active job definition found for %s", jobDef)
 	}
 
-	// Retrieve the Image URI from the first job definition in the response
-	imageURI := aws.StringValue(resp.JobDefinitions[0].ContainerProperties.Image)
+	latest := resp.JobDefinitions[len(resp.JobDefinitions)-1]
+	imageURI := aws.StringValue(latest.ContainerProperties.Image)
 
 	return imageURI, nil
 }
