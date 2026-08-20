@@ -28,8 +28,8 @@ func (c *AWSBatchController) GetJobDefInfo(jobDef string) (JobDefinitionInfo, er
 
 	var jdi JobDefinitionInfo
 	resp, err := c.client.DescribeJobDefinitions(&batch.DescribeJobDefinitionsInput{
-		JobDefinitions: []*string{aws.String(jobDef)},
-		Status:         aws.String("ACTIVE"),
+		JobDefinitionName: aws.String(jobDef),
+		Status:            aws.String("ACTIVE"),
 	})
 
 	if err != nil {
@@ -233,8 +233,8 @@ func (c *AWSBatchController) JobCancel(jobID, reason string) (string, error) {
 func (c *AWSBatchController) GetImageURI(jobDef string) (string, error) {
 
 	resp, err := c.client.DescribeJobDefinitions(&batch.DescribeJobDefinitionsInput{
-		JobDefinitions: []*string{aws.String(jobDef)},
-		Status:         aws.String("ACTIVE"),
+		JobDefinitionName: aws.String(jobDef),
+		Status:            aws.String("ACTIVE"),
 	})
 
 	if err != nil {
