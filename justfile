@@ -6,7 +6,7 @@ default:
 
 # Create the external docker network shared by the stack and spawned job containers
 network:
-    @docker network inspect process_api_net >/dev/null 2>&1 || docker network create process_api_net
+    @docker network inspect sepex_net >/dev/null 2>&1 || docker network create sepex_net
 
 # Build the example plugin images
 build-plugins:

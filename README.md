@@ -7,13 +7,13 @@
 An [OGC API - Processes](https://docs.ogc.org/is/18-062r2/18-062r2.html#toc0) compliant server for executing encapsulated (containerized, CLI, ...) processes locally or on a cloud at scale.
 
 SEPEX provides:
-- job queuing 
+- job queuing
 - job tracking
 - job logs
 - job metadata
 - job results
 
-  
+
 
 The API responses follow the examples provided here:
 https://developer.ogc.org/api/processes/index.html
@@ -30,7 +30,7 @@ Common tasks are wrapped in a [justfile](justfile). Install [`just`](https://git
 ![](imgs/readme/getting-started.gif)
 1. Add/Delete process configuration file(s) (yaml) to the [plugins](plugins/) directory as needed
 1. Build docker images for example plugins with `just build-plugins`
-1. Start the stack with `just up`. This creates the `process_api_net` docker network, brings up MinIO, Postgres and the API, and creates the bucket named by `STORAGE_BUCKET` in MinIO.
+1. Start the stack with `just up`. This creates the `sepex_net` docker network, brings up MinIO, Postgres and the API, and creates the bucket named by `STORAGE_BUCKET` in MinIO.
 1. Test endpoints using the swagger documentation page. (http://localhost:5050/swagger/index.html)
 
 Other tasks:

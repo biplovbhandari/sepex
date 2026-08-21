@@ -69,7 +69,7 @@ jobs:
         run: docker compose -f docker-compose.prod.yml build
 
       - name: Create network
-        run: docker network create process_api_net
+        run: docker network create sepex_net
 
       # minio-init creates STORAGE_BUCKET as part of the stack; compose waits for
       # it to complete before starting the api service.

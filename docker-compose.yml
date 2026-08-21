@@ -13,7 +13,7 @@ services:
       - ./.data/api:/.data
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-      - process_api_net
+      - sepex_net
     depends_on:
       minio-init:
         condition: service_completed_successfully
@@ -32,7 +32,7 @@ services:
     volumes:
       - ./.data/minio:/data
     networks:
-      - process_api_net
+      - sepex_net
     healthcheck:
       test: [ 'CMD-SHELL', 'curl -sf http://localhost:9000/minio/health/live || exit 1' ]
       interval: 5s
@@ -46,7 +46,7 @@ services:
     env_file:
       - .env
     networks:
-      - process_api_net
+      - sepex_net
     depends_on:
       minio:
         condition: service_healthy
@@ -68,8 +68,8 @@ services:
     volumes:
       - ./.data/postgres:/var/lib/postgresql/data
     networks:
-      - process_api_net
+      - sepex_net
 
 networks:
-  process_api_net:
+  sepex_net:
     external: true
