@@ -34,7 +34,7 @@ wipe: down
     -docker run --rm -v {{ justfile_directory() }}/.data/:/data alpine rm -rf /data/minio
     -docker run --rm -v {{ justfile_directory() }}/.data/:/data alpine rm -rf /data/api
 
-# Run the e2e suite against the local compose stack; prints logs, leaves it up
+# Run the e2e suite against the local compose stack; leaves the stack up
 test-e2e: build-plugins build up
     @just _wait-for-api
     docker run --rm --network host -v "{{ justfile_directory() }}/tests/e2e:/etc/newman" postman/newman:5.3.1-alpine run tests.postman_collection.json --env-var "url=localhost:5050" --reporters cli --bail --color on
@@ -54,3 +54,13 @@ _wait-for-api:
     echo "API not ready after 12 attempts"
     just _dump-logs
     exit 1
+
+# Print the compose logs and the API log file
+_dump-logs:
+    #!/usr/bin/env bash
+    echo "---- docker compose logs ----"
+    docker compose logs || true
+    if [ -f .data/api/logs/api.jsonl ]; then
+      echo "---- .data/api/logs/api.jsonl ----"
+      cat .data/api/logs/api.jsonl || true
+    fi
