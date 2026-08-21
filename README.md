@@ -7,13 +7,13 @@
 An [OGC API - Processes](https://docs.ogc.org/is/18-062r2/18-062r2.html#toc0) compliant server for executing encapsulated (containerized, CLI, ...) processes locally or on a cloud at scale.
 
 SEPEX provides:
-- job queuing 
+- job queuing
 - job tracking
 - job logs
 - job metadata
 - job results
 
-  
+
 
 The API responses follow the examples provided here:
 https://developer.ogc.org/api/processes/index.html
@@ -24,7 +24,7 @@ https://developer.ogc.org/api/processes/index.html
 
 ### Linux using Docker
 
-1. Create docker network `docker network create process_api_net`
+1. Create docker network `docker network create sepex_net`
 
 1. Build docker images for example plugins
 ```sh

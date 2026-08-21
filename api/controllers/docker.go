@@ -21,7 +21,7 @@ var DOCKER_NETWORK = func() string {
 	if v := os.Getenv("DOCKER_NETWORK"); v != "" {
 		return v
 	}
-	return "process_api_net"
+	return "sepex_net"
 }()
 
 type ContainerInfo struct {

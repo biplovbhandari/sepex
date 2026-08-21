@@ -52,14 +52,14 @@ EOF
 docker compose -f docker-compose.prod.yml build
 
 # --- Network (ignore error if already exists) ---
-docker network create process_api_net >/dev/null 2>&1 || true
+docker network create sepex_net >/dev/null 2>&1 || true
 
 # --- Run stack ---
 docker compose -f docker-compose.prod.yml up -d
 
 # --- Create bucket in minio ---
 docker run \
-  --network process_api_net \
+  --network sepex_net \
   -e MINIO_ROOT_USER=user \
   -e MINIO_ROOT_PASSWORD=password \
   -e STORAGE_BUCKET=sepex-storage \
