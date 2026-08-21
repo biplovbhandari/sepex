@@ -13,10 +13,10 @@ services:
       - ./.data/api:/.data
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-      - process_api_net
+      - sepex_net
     depends_on:
-      minio:
-        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
 
@@ -32,7 +32,26 @@ services:
     volumes:
       - ./.data/minio:/data
     networks:
-      - process_api_net
+      - sepex_net
+    healthcheck:
+      test: [ 'CMD-SHELL', 'curl -sf http://localhost:9000/minio/health/live || exit 1' ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Safe to re run, an existing bucket will not cause an error.
+  minio-init:
+    container_name: minio-init
+    image: minio/mc:RELEASE.2023-08-18T21-57-55Z
+    env_file:
+      - .env
+    networks:
+      - sepex_net
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c " mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD && mc mb --ignore-existing local/$$STORAGE_BUCKET && echo 'Bucket ready.' "
 
   postgres:
     container_name: postgres
@@ -42,15 +61,15 @@ services:
     ports:
       - '5432:5432'
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      test: [ 'CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB' ]
       interval: 10s
       timeout: 5s
       retries: 5
     volumes:
       - ./.data/postgres:/var/lib/postgresql/data
     networks:
-      - process_api_net
+      - sepex_net
 
 networks:
-  process_api_net:
+  sepex_net:
     external: true
