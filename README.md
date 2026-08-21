@@ -24,20 +24,25 @@ https://developer.ogc.org/api/processes/index.html
 
 ### Linux using Docker
 
-1. Create docker network `docker network create sepex_net`
+Common tasks are wrapped in a [justfile](justfile). Install [`just`](https://github.com/casey/just) and run `just` to list them; if you would rather not install it, the underlying commands are all visible in that file.
 
-1. Build docker images for example plugins
-```sh
-cd plugin-examples &&
-chmod +x build.sh &&
-./build.sh &
-```
 1. Create a `.env` file (example below) at the root of this repo.
 ![](imgs/readme/getting-started.gif)
 1. Add/Delete process configuration file(s) (yaml) to the [plugins](plugins/) directory as needed
-1. Run `docker compose up`
-1. Create a bucket in the minio console (http://localhost:9001).
+1. Build docker images for example plugins with `just build-plugins`
+1. Start the stack with `just up`. This creates the `sepex_net` docker network, brings up MinIO, Postgres and the API, and creates the bucket named by `STORAGE_BUCKET` in MinIO.
 1. Test endpoints using the swagger documentation page. (http://localhost:5050/swagger/index.html)
+
+Other tasks:
+
+| Command | What it does |
+| --- | --- |
+| `just logs` | Follow the stack logs |
+| `just down` | Stop the stack |
+| `just wipe` | Stop the stack and delete all local data under `.data/` |
+| `just e2e` | Run the end-to-end suite against the local compose stack, then print the logs |
+
+`just e2e` runs against the `.env` already at the repo root, so make sure it points at the local stack before running it. It leaves the stack running afterwards; use `just down` when you are finished with it.
 
 ![](imgs/readme/swagger-demo.gif)
 
