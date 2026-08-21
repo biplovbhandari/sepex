@@ -218,17 +218,15 @@ func MarshallProcess(f string) (Process, error) {
 	case "aws-batch":
 		c, err := controllers.NewAWSBatchController(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), os.Getenv("AWS_REGION"))
 		if err != nil {
-			log.Warnf("aws-batch controller init failed for %s, registering without job definition metadata: %v", p.Info.ID, err)
-		} else {
-			jdi, err := c.GetJobDefInfo(p.Host.JobDefinition)
-			if err != nil {
-				log.Warnf("aws-batch job definition lookup failed for %s, registering without metadata: %v", p.Info.ID, err)
-			} else {
-				p.Host.Image = jdi.Image
-				p.Config.Resources.Memory = jdi.Memory
-				p.Config.Resources.CPUs = jdi.VCPUs
-			}
+			return Process{}, err
 		}
+		jdi, err := c.GetJobDefInfo(p.Host.JobDefinition)
+		if err != nil {
+			return Process{}, err
+		}
+		p.Host.Image = jdi.Image
+		p.Config.Resources.Memory = jdi.Memory // although we are fetching this information but is not being used anywhere or reported to users
+		p.Config.Resources.CPUs = jdi.VCPUs    // although we are fetching this information but is not being used anywhere or reported to users
 	case "docker", "subprocess":
 		// Set default resources if not specified in config
 		if p.Config.Resources.CPUs == 0 {
