@@ -17,16 +17,12 @@ import (
 	"github.com/labstack/gommon/log"
 )
 
-<<<<<<< HEAD
 var DOCKER_NETWORK = func() string {
 	if v := os.Getenv("DOCKER_NETWORK"); v != "" {
 		return v
 	}
 	return "sepex_net"
 }()
-=======
-const DOCKER_NETWORK = "sepex_net"
->>>>>>> feature/setup-enhancement
 
 type ContainerInfo struct {
 	Exists   bool
