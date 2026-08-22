@@ -17,12 +17,18 @@ import (
 	"github.com/labstack/gommon/log"
 )
 
-var DOCKER_NETWORK = func() string {
-	if v := os.Getenv("DOCKER_NETWORK"); v != "" {
+const defaultDockerNetwork = "sepex_net"
+
+// dockerNetwork returns the network launched containers are attached to.
+// Read at call time, not at package init, so that values loaded from the dot
+// env file at startup are picked up. Setting it to `host` runs containers with
+// host networking instead of attaching them to a user defined network.
+func dockerNetwork() string {
+	if v := os.Getenv("SEPEX_DOCKER_NETWORK"); v != "" {
 		return v
 	}
-	return "sepex_net"
-}()
+	return defaultDockerNetwork
+}
 
 type ContainerInfo struct {
 	Exists   bool
@@ -81,18 +87,20 @@ func (c *DockerController) ContainerRun(ctx context.Context, imageName string, c
 	}
 	hostConfig.Mounts = mounts
 
+	netName := dockerNetwork()
+
 	var netConfig *network.NetworkingConfig
-	if DOCKER_NETWORK == "host" {
+	if netName == "host" {
 		hostConfig.NetworkMode = "host"
 	} else {
-		err := createDockerNetwork(c.cli, ctx, DOCKER_NETWORK)
+		err := createDockerNetwork(c.cli, ctx, netName)
 		if err != nil {
 			log.Error(err)
 			return "", err
 		}
 		netConfig = &network.NetworkingConfig{
 			EndpointsConfig: map[string]*network.EndpointSettings{
-				DOCKER_NETWORK: {},
+				netName: {},
 			},
 		}
 	}

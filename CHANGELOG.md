@@ -19,6 +19,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Job responses now includes the `tags` field.
 
+### Configuration
+
+- New `SEPEX_DOCKER_NETWORK` environment variable (default: `sepex_net`) to set the docker network that launched job containers are attached to. Set it to `host` to run them with host networking, which is required on EC2 for instance profile credential access.
+- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are now optional. When either is unset, the default AWS credential chain is used instead (environment, shared credentials file, EC2 instance profile), allowing deployments to authenticate with an IAM role rather than static keys.
+
 ## [0.2.2] - 2025-2-28
 
 ### API
