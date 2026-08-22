@@ -69,21 +69,12 @@ jobs:
         run: docker compose -f docker-compose.prod.yml build
 
       - name: Create network
-        run: docker network create process_api_net
+        run: docker network create sepex_net
 
+      # minio-init creates STORAGE_BUCKET as part of the stack; compose waits for
+      # it to complete before starting the api service.
       - name: Run the docker compose stack
         run: docker compose -f docker-compose.prod.yml up -d
-
-      - name: Create bucket
-        run: >
-          docker run
-          --network process_api_net
-          -e MINIO_ROOT_USER=user
-          -e MINIO_ROOT_PASSWORD=password
-          -e STORAGE_BUCKET=sepex-storage
-          --entrypoint /bin/sh
-          minio/mc:RELEASE.2023-08-18T21-57-55Z
-          -c "mc alias set myminio http://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD && mc mb myminio/\${STORAGE_BUCKET}"
 
       - name: Wait for API server to be ready
         run: |
