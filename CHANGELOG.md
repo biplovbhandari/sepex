@@ -22,7 +22,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Configuration
 
 - New `SEPEX_DOCKER_NETWORK` environment variable (default: `sepex_net`) to set the docker network that launched job containers are attached to. Set it to `host` to run them with host networking, which is required on EC2 for instance profile credential access.
-- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are now optional. When either is unset, the default AWS credential chain is used instead (environment, shared credentials file, EC2 instance profile), allowing deployments to authenticate with an IAM role rather than static keys.
+- AWS credentials (S3 and Batch) are now resolved through the default AWS credential chain rather than read directly from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Deployments that set those variables are unaffected, deployments without them can authenticate with an ECS/EC2 instance role, and `AWS_SESSION_TOKEN` is now honored for temporary credentials. MinIO continues to use its own `MINIO_*` keys.
+
+### Fixed
+
+- AWS Batch log stream lookup read the region from `AWS_DEFAULT_REGION`, which the API never defines, leaving the request without a region. All AWS calls now resolve the region from `AWS_REGION`.
 
 ## [0.2.2] - 2025-2-28
 
