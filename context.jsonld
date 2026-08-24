@@ -4,6 +4,7 @@
         "dct": "http://purl.org/dc/terms/",
         "prov": "https://www.w3.org/ns/prov#",
         "schema": "https://schema.org/",
+        "sepex": "https://github.com/Dewberry/sepex/blob/main/context.jsonld#",
         "xsd": "http://www.w3.org/2001/XMLSchema#",
         "apiUser": {
             "@id": "schema:email",
@@ -27,6 +28,10 @@
             "@id": "@type"
         },
         "imageDigest": "aorc:hash",
+        "digestSource": {
+            "@id": "sepex:digestSource",
+            "@type": "xsd:string"
+        },
         "commands": "aorc:commands",
         "recoveryNotice": {
             "@id": "schema:description",

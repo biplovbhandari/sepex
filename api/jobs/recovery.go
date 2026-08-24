@@ -342,6 +342,11 @@ func recoverAWSBatchJobsFromRecords(
 			j.NewStatusUpdate(RUNNING, time.Now())
 			// No watcher loop: system expects status updates to come via the status endpoint.
 
+			// This job is still running, so its ECS task is still describable.
+			// Capturing now is the last chance to learn which image it ran,
+			// since the status endpoint will not report RUNNING again.
+			go j.ensureImageProvenance()
+
 		case "SUCCESSFUL":
 			j.NewStatusUpdate(SUCCESSFUL, time.Now())
 			go j.WriteMetaData()

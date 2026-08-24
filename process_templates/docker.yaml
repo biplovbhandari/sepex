@@ -19,6 +19,9 @@ info:
 host:
   type: "docker"
   # full uri of the image, it should be exactly same as what is needed in docker pull command
+  # prefer a digest pinned reference, as `alpine@sha256:...`, for reproducible runs
+  # a moving tag can be repointed at different contents between one run and the next
+  # the API warns at startup when the image is not digest pinned, it does not refuse to load
   image: "alpine:3.18"
 
 # commands for the container, it only overwrite commands, not entrypoint

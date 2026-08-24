@@ -42,6 +42,14 @@ type AWSBatchJob struct {
 	logger  *log.Logger
 	logFile *os.File
 
+	// Image provenance. Captured when the job reports RUNNING, because the ECS
+	// task that can report a digest is only describable for a short while after
+	// it stops. The mutex guards against the RUNNING capture and the fallback
+	// in WriteMetaData overlapping, which happens for short lived jobs.
+	provenanceMu sync.Mutex
+	imageDigest  string
+	digestSource string
+
 	JobDef   string `json:"jobDefinition"`
 	JobQueue string `json:"jobQueue"`
 
@@ -90,6 +98,101 @@ func (j *AWSBatchJob) CMD() []string {
 
 func (j *AWSBatchJob) IMAGE() string {
 	return j.Image
+}
+
+// ensureImageProvenance records which image this job ran and how confidently we
+// know it. It is idempotent, so it can be called when the job reports RUNNING
+// and again before metadata is written without repeating work.
+//
+// Calling it while the job is running is what makes an observed digest
+// reachable: ECS only keeps a stopped task describable for about an hour, so a
+// job that is recovered after a restart, or that never reported RUNNING, will
+// usually fall back to a weaker source.
+func (j *AWSBatchJob) ensureImageProvenance() {
+	j.provenanceMu.Lock()
+	defer j.provenanceMu.Unlock()
+
+	if j.imageDigest != "" || j.AWSBatchID == "" {
+		return
+	}
+
+	c := j.batchContext
+	if c == nil {
+		var err error
+		c, err = controllers.NewAWSBatchController()
+		if err != nil {
+			j.logger.Warnf("Could not create controller for image provenance: %s", err.Error())
+			return
+		}
+	}
+
+	imageURI, digest, err := c.GetJobImage(j.AWSBatchID)
+	if err != nil {
+		j.logger.Warnf("Could not determine image for job: %s", err.Error())
+		return
+	}
+
+	if imageURI != "" {
+		j.Image = imageURI
+	}
+
+	switch {
+	case digestFromRef(imageURI) != "":
+		// Checked before the observed digest so that a pinned reference always
+		// reports the same way, whether or not ecs:DescribeTasks is available.
+		j.imageDigest = digestFromRef(imageURI)
+		j.digestSource = DigestSourcePinned
+
+	case digest != "":
+		// ECS told us what it pulled, which is the best available answer for a
+		// reference that does not carry its own digest.
+		j.imageDigest = digest
+		j.digestSource = DigestSourceObserved
+
+	default:
+		// Nothing exact is available, so ask the registry what the tag points
+		// at now. Worth recording while the job is running, since the pull
+		// happened minutes ago, but it is still guessing.
+		j.digestSource = DigestSourceUnavailable
+		if imageURI == "" {
+			return
+		}
+		registryDigest, err := resolveRegistryDigest(imageURI)
+		if err != nil {
+			j.logger.Warnf("Could not resolve image digest from registry: %s", err.Error())
+			return
+		}
+		j.imageDigest = registryDigest
+		j.digestSource = DigestSourceTagLookup
+	}
+}
+
+// imageProvenance returns what this job ran, capturing it first if the RUNNING
+// hook never got the chance. An empty image means we could not even establish
+// which image reference the job used.
+func (j *AWSBatchJob) imageProvenance() image {
+	// Normally a no-op: provenance was captured when the job reported RUNNING.
+	// This covers jobs that never reported it and jobs recovered after a
+	// restart, both of which may end up with a weaker source or none at all.
+	j.ensureImageProvenance()
+
+	j.provenanceMu.Lock()
+	defer j.provenanceMu.Unlock()
+
+	if j.Image == "" {
+		return image{}
+	}
+
+	i := image{
+		ImageURI:     j.Image,
+		ImageDigest:  j.imageDigest,
+		DigestSource: j.digestSource,
+	}
+	if i.DigestSource == "" {
+		i.DigestSource = DigestSourceUnavailable
+	}
+
+	return i
 }
 
 // Not used anywhere but needed for interface.
@@ -422,34 +525,8 @@ func (j *AWSBatchJob) WriteMetaData() {
 		j.logger.Errorf("Error writing metadata: %s", err.Error())
 	}
 
-	var imgURI string
-	if c != nil && j.JobDef != "" {
-		imgURI, err = c.GetImageURI(j.JobDef)
-		if err != nil {
-			j.logger.Errorf("Error writing metadata: %s", err.Error())
-		}
-	}
-
-	// - imgDgst would be incorrect if the tag has been updated in between
-	// - if there are multiple architectures available for the same image tag,
-	// the digest is probably for the manifest
-	var imgDgst string
-	if imgURI != "" {
-		switch {
-		case strings.Contains(imgURI, "amazonaws.com/"):
-			imgDgst, err = getECRImageDigest(imgURI)
-		case strings.Contains(imgURI, "ghcr.io/"):
-			imgDgst, err = getGHCRImageDigest(imgURI, "")
-		default:
-			imgDgst, err = getDkrHubImageDigest(imgURI, "dummy")
-		}
-		if err != nil {
-			j.logger.Errorf("Error writing metadata: %s", err.Error())
-		}
-	}
-
 	p := process{j.ProcessID(), j.ProcessVersion}
-	i := image{imgURI, imgDgst}
+	i := j.imageProvenance()
 
 	var g, s, e time.Time
 	if c != nil {

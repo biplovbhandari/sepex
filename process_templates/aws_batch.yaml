@@ -18,12 +18,15 @@ info:
 # fields that are not related to a particular host can be omitted
 host:
   type: "aws-batch"
+  # pin the job definition to a revision, as `name:revision`
+  # without a revision Batch runs whichever one is latest at submission, so two
+  # runs of this same process version can execute different code
   jobDefinition: process-sandbox:2
   jobQueue: micro-test
-  # full uri of the image, it should be exactly same as what is needed in docker pull command
-  # image should be empty when image is defined somewhere else, for example in jobDefinition
-  # in that case the, the API will fetch this information at the startup and overwrite image information
-  image: ""
+  # `image` is not set for `aws-batch`, the job definition supplies it
+  # for reproducible runs the image in that job definition revision should itself
+  # be digest pinned, as `repository@sha256:...` rather than a moving tag
+  # the API warns at startup when either is unpinned, it does not refuse to load
 
 # commands for the container, it only overwrite commands, not entrypoint
 # if an image has entrypoint defined, commands will be appended

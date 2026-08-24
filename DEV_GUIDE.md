@@ -71,6 +71,21 @@ Recovery rebuilds in-memory state after a restart using DB non-terminal jobs.
 
 1. Metadata for recovered jobs will be incomplete but present.
 
+## Image Provenance
+
+How we ended up recording what each job ran, and what we tried first.
+
+**Design decisions:**
+
+1. We chose the Docker model for image provenance: loose references, no enforcement, but an honest record of what ran. This is to allow fast integration
+of newest container images, while being honest about it that means we can not always reliably record provenance for cloud jobs.This choice forced us to add `digestSource` in metadata,
+to list our trust in the value that we are providing.
+
+1. With this change , our capturing of digest moved from job completion to the RUNNING transition. Because after job is completed, is not the right time to do tag based lookup, drift
+window is wider at that point.
+
+The `digestSource` values are documented for users in the Metadata section of README.md and declared as a term in context.jsonld. We have to keep those and the constants in api/jobs/metadata.go in sync.
+
 ## Release/Versioning/Changelog
 
 The project uses an automated release workflow triggered by semver tags (e.g., `v1.0.0`, `v1.0.0-beta`). The workflow validates prerequisites, runs security scans, builds multi-platform container images, and creates GitHub releases with auto-generated release notes.
