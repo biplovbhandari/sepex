@@ -1,0 +1,71 @@
+name: Prune Dev Images
+
+on:
+  schedule:
+    # Runs at 03:00, only on Monday
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Log what would be deleted without deleting anything"
+        type: boolean
+        default: true
+
+# No token scope by default; the prune job opts in to exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Prune sepex Images
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+
+    steps:
+      - name: Prune old sha- images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          owner: ${{ github.repository_owner }}
+          # build-dev-image.yml and release.yml both publish to
+          # ghcr.io/<owner>/<repo>, so the GHCR package name is just "<repo>".
+          package: ${{ github.event.repository.name }}
+
+          # Restricts every delete and keep rule below to images older than
+          # this. Anything published in the last two weeks is untouchable.
+          older-than: 2 weeks
+
+          # Of the images that ARE older than two weeks, keep the newest one.
+          # This is the "don't strand the only build" guarantee: if main saw
+          # no pushes for a month, every image is a deletion candidate and
+          # this is what stops the last one from being removed.
+          keep-n-tagged: 1
+
+          # Reap the dangling manifests orphaned each time the dev tag moves.
+          delete-untagged: true
+
+          # Takes priority over every other rule. sha-<short-sha> carries no
+          # dots, so it never matches the version patterns and stays eligible
+          # for pruning.
+          #   dev     - the floating tag
+          #   latest  - latest release
+          #   *.*.*   - bare semver from release.yml ({{version}})
+          #   *.*     - major.minor from release.yml ({{major}}.{{minor}})
+          #   v*      - v-prefixed semver (v1.2.3)
+          # Released images also carry a sha- tag, but an excluded tag on the
+          # same version protects the whole image, so releases are safe.
+          exclude-tags: dev,latest,*.*.*,*.*,v*
+
+          # Post-run check that no multi-arch image was left without its
+          # platform children. Cheap insurance, and this repo publishes
+          # amd64 + arm64.
+          validate: true
+
+          # Scheduled runs delete for real. Manual runs default to a dry run
+          # so the filters can be eyeballed before anything is deleted.
+          dry-run: ${{ inputs.dry-run || false }}
