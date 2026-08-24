@@ -5,9 +5,9 @@
 - Command line flags are available for config that is only needed at startup, they take precedence over the environment variables when used.
 - Other configs are defined through env variables so that they can be modified without restarting the server.
 - Here is the resolution order:
-  - Flag, where option is available and used
-  - Environment variable
-  - Default value, where available
+    - Flag, where option is available and used
+    - Environment variable
+    - Default value, where available
 
 ## Process Specific Env
 
@@ -52,7 +52,6 @@ Example payload:
 **Design decisions:**
 
 1. ResourceLimits calculated once at startup from flags/env vars. Dynamic reconfiguration rejected because a queued job could block forever if limits are reduced below its requirements after it was already validated and enqueued.
-
 1. ResourcePool and PendingJobs use `sync.Mutex`. Channels add complexity without benefit for simple state. Go channels use internal mutexes anyway, so performance is similar.
 
 ## Recovery
@@ -62,13 +61,9 @@ Recovery rebuilds in-memory state after a restart using DB non-terminal jobs.
 **Design decisions:**
 
 1. All non terminal jobs before restart get a log entry in logs and if recovered successfully get a note in metadata as well.
-
 1. Docker jobs that never started don't have enough data to be requeued so they are marked dismissed. Jobs whose container can't be found/accessed are marked LOST, while jobs whose container can be found and accessed are recovered.
-
 1. Subprocess jobs are not recoverable. They are marked DISMISSED if prior status is ACCEPTED, this is because we know for sure the weren't RUNNING before crash. Jobs that were RUNNING are considered LOST.
-
 1. AWS Batch recovery queries the Batch API for current state. Missing jobs are marked LOST; running jobs are re-registered in ActiveJobs; finished jobs are finalized and metadata/log handling is triggered.
-
 1. Metadata for recovered jobs will be incomplete but present.
 
 ## Image Provenance
@@ -77,12 +72,9 @@ How we ended up recording what each job ran, and what we tried first.
 
 **Design decisions:**
 
-1. We chose the Docker model for image provenance: loose references, no enforcement, but an honest record of what ran. This is to allow fast integration
-of newest container images, while being honest about it that means we can not always reliably record provenance for cloud jobs.This choice forced us to add `digestSource` in metadata,
-to list our trust in the value that we are providing.
-
-1. With this change , our capturing of digest moved from job completion to the RUNNING transition. Because after job is completed, is not the right time to do tag based lookup, drift
-window is wider at that point.
+1. We chose the Docker model for image provenance: loose references, no enforcement, but an honest record of what ran. This is to allow fast integration of newest container images, while being honest about it that means we can not always reliably record provenance for cloud jobs.This choice forced us to add `digestSource` in metadata, to list our trust in the value that we are providing.
+2. With this change , our capturing of digest moved from job completion to the RUNNING transition. Because after job is completed, is not the right time to do tag based lookup, drift window is wider at that point.
+3. We are aiming to provide "image index" digest, but if a developer list manifest digest, then that will be adopted. We are calling it ImageDigest in metadata as a general term (technically incorrect, but easier for understanding).
 
 The `digestSource` values are documented for users in the Metadata section of README.md and declared as a term in context.jsonld. We have to keep those and the constants in api/jobs/metadata.go in sync.
 
@@ -93,12 +85,12 @@ The project uses an automated release workflow triggered by semver tags (e.g., `
 ### How to Create a Release
 
 1. **Update CHANGELOG.md**
+
    - Add a new version entry following the format: `## [X.Y.Z] - YYYY-MM-DD`
    - Document all changes under appropriate categories (API, Features, Configuration, etc.)
    - Add version comparison links at the bottom of the file
    - Release workflow fails if version is missing from CHANGELOG.md
-
-2. **Create and Push a Semver Tag**
+1. **Create and Push a Semver Tag**
 
    ```bash
    # For a regular release
@@ -109,8 +101,8 @@ The project uses an automated release workflow triggered by semver tags (e.g., `
    git tag v1.0.0-beta
    git push origin v1.0.0-beta
    ```
+1. **Monitor the Release Workflow**
 
-3. **Monitor the Release Workflow**
    - The GitHub Actions workflow will automatically trigger
    - It will validate the tag format and CHANGELOG entry
    - Run CodeQL security scan on the codebase
@@ -118,8 +110,8 @@ The project uses an automated release workflow triggered by semver tags (e.g., `
    - Run Trivy vulnerability scan on the container
    - Push multi-platform images to GitHub Container Registry
    - Create a GitHub release with release notes copied from CHANGELOG.md
+1. **Workflow Can Also Be Triggered Manually**
 
-4. **Workflow Can Also Be Triggered Manually**
    - Go to Actions tab → Release workflow → Run workflow
    - Select the tag from the dropdown
    - This is useful for re-running a release if needed

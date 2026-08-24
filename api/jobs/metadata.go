@@ -75,14 +75,37 @@ type metaData struct {
 // pulled it, so callers must record the result as DigestSourceTagLookup rather
 // than as the digest that certainly ran.
 func resolveRegistryDigest(imgURI string) (string, error) {
+	host := registryHost(imgURI)
+
 	switch {
-	case strings.Contains(imgURI, "amazonaws.com/"):
+	case strings.HasSuffix(host, "amazonaws.com"):
 		return getECRImageDigest(imgURI)
-	case strings.Contains(imgURI, "ghcr.io/"):
+	case host == "ghcr.io":
 		return getGHCRImageDigest(imgURI, "")
-	default:
+	case host == "docker.io" || host == "index.docker.io" || host == "registry-1.docker.io":
 		return getDkrHubImageDigest(imgURI, "dummy")
+	default:
+		return "", fmt.Errorf("no digest lookup implemented for registry %s", host)
 	}
+}
+
+// registryHost returns the registry an image reference resolves to, following
+// the same rule the docker CLI uses: the first path segment is a hostname only
+// when it contains a dot or a colon, or is exactly `localhost`. Anything else
+// is Docker Hub, so `postgres` and `bitnami/postgres` both live there.
+func registryHost(imgURI string) string {
+	first, _, found := strings.Cut(imgURI, "/")
+	if !found {
+		// No path separator at all, so the whole reference is a Docker Hub
+		// official image name and any colon in it is the tag.
+		return "docker.io"
+	}
+
+	if strings.ContainsAny(first, ".:") || first == "localhost" {
+		return first
+	}
+
+	return "docker.io"
 }
 
 // Get image digest from ecr
