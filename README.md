@@ -3,17 +3,17 @@
 [![Container CI](https://github.com/Dewberry/sepex/actions/workflows/release.yml/badge.svg)](https://github.com/Dewberry/sepex/actions/workflows/release.yml)
 [![E2E Tests](https://github.com/Dewberry/sepex/actions/workflows/e2e-tests.yml/badge.svg?event=push)](https://github.com/Dewberry/sepex/actions/workflows/e2e-tests.yml)
 [![Update Sequence Diagrams Wiki](https://github.com/Dewberry/sepex/actions/workflows/update-squence-wiki.yml/badge.svg)](https://github.com/Dewberry/sepex/actions/workflows/update-squence-wiki.yml)
+[![Dev Image](https://github.com/Dewberry/sepex/actions/workflows/build-dev-image.yml/badge.svg)](https://github.com/Dewberry/sepex/actions/workflows/build-dev-image.yml)
 
 An [OGC API - Processes](https://docs.ogc.org/is/18-062r2/18-062r2.html#toc0) compliant server for executing encapsulated (containerized, CLI, ...) processes locally or on a cloud at scale.
 
 SEPEX provides:
+
 - job queuing
 - job tracking
 - job logs
 - job metadata
 - job results
-
-
 
 The API responses follow the examples provided here:
 https://developer.ogc.org/api/processes/index.html
@@ -22,12 +22,14 @@ https://developer.ogc.org/api/processes/index.html
 
 ## Getting Started
 
-### Linux using Docker
+### Linux (Building Docker Image from Source)
 
 Common tasks are wrapped in a [justfile](justfile). Install [`just`](https://github.com/casey/just) and run `just` to list them; if you would rather not install it, the underlying commands are all visible in that file.
 
 1. Create a `.env` file (example below) at the root of this repo.
+
 ![](imgs/readme/getting-started.gif)
+
 1. Add/Delete process configuration file(s) (yaml) to the [plugins](plugins/) directory as needed
 1. Build docker images for example plugins with `just build-plugins`
 1. Start the stack with `just up`. This creates the `sepex_net` docker network, brings up MinIO, Postgres and the API, and creates the bucket named by `STORAGE_BUCKET` in MinIO.
@@ -35,18 +37,19 @@ Common tasks are wrapped in a [justfile](justfile). Install [`just`](https://git
 
 Other tasks:
 
-| Command | What it does |
-| --- | --- |
-| `just logs` | Follow the stack logs |
-| `just down` | Stop the stack |
-| `just wipe` | Stop the stack and delete all local data under `.data/` |
-| `just e2e` | Run the end-to-end suite against the local compose stack, then print the logs |
+| Command         | What it does                                                                  |
+| --------------- | ----------------------------------------------------------------------------- |
+| `just logs`     | Follow the stack logs                                                         |
+| `just down`     | Stop the stack                                                                |
+| `just wipe`     | Stop the stack and delete all local data under `.data/`                       |
+| `just test-e2e` | Run the end-to-end suite against the local compose stack, then print the logs |
 
-`just e2e` runs against the `.env` already at the repo root, so make sure it points at the local stack before running it. It leaves the stack running afterwards; use `just down` when you are finished with it.
+`just test-e2e` runs against the `.env` already at the repo root, so make sure it points at the local stack before running it. It leaves the stack running afterwards; use `just down` when you are finished with it.
 
 ![](imgs/readme/swagger-demo.gif)
 
 ### Windows
+
 *`docker` and `aws-batch` jobs have not been tested yet on Windows*
 
 1. Create a `.env` file (example below). Update paths in the env file as needed.
@@ -56,6 +59,24 @@ Other tasks:
 5. Build API by running `go build -o sepex.exe main.go`
 6. Run API by `sepex -e ../.env`
 
+### Prebuilt Images
+
+The API image is published to GitHub Container Registry, so you can run a build
+without compiling it yourself:
+
+```sh
+docker pull ghcr.io/dewberry/sepex:dev
+```
+
+| Tag | Points at |
+| --- | --- |
+| `dev` | The latest commit on `main`. Moves on every push that touches `api/`. |
+| `sha-<short-sha>` | One specific commit. Does not move. |
+| `latest` | The most recent non-prerelease release. |
+| `0.2.2`, `0.2` | A released version, exact or latest patch of that minor. |
+
+Pin to a released version for a reproducible setup as `dev` and `latest` are movable and `sha-` tags older than two weeks are pruned.
+
 ---
 
 ## System Components
@@ -63,25 +84,26 @@ Other tasks:
 The system design consists of four major system components:
 
 ### API
+
 The API is the main orchestrator for all the downstream functionality and a single point of communication with the system.
 
 ### Processes
+
 ![](imgs/readme/processes.png)
 Processes are computational tasks described through a configuration file that can be executed as a subprocess or in a container. Each configuration file contains information about the process such as the title of this process, its description, execution mode, execution resources, secrets required, inputs, and outputs. Each config file is to be unmarshalled to register a process in the API. These processes then can be called several times by the users to run jobs.
 
-
 ### Jobs
+
 ![](imgs/readme/jobs.png)
 Each execution of a process is called a job. A job can be synchronous or asynchronous depending on the process configuration and client preference. Synchronous jobs return responses after the job has reached a finished state, meaning either successful or failed. The asynchronous jobs return a response immediately with a job id for the client so that the client can monitor the jobs.
-
 
 *Note on Processes: The developers must make sure they choose the right platform to execute a process. The processes that are short-lived and fast and do not create a file resource as an output, for example getting the water surface elevation values for a coordinate from cloud raster, must be registered to run on the local machine so that they are synchronous. These kinds of processes should output data in JSON format.*
 
 *On the other hand, processes that take a long time to execute and their results are files, for example clipping a raster, must be registered to run on the cloud so that they are asynchronous. These processes should contain links to file resources in their results.*
 
 ### Execution Platforms
-Execution platforms are hosts that can provide resources to run a job. This can be a cloud provider such as AWS Batch or the local machine.
 
+Execution platforms are hosts that can provide resources to run a job. This can be a cloud provider such as AWS Batch or the local machine.
 
 ## Behaviour
 
@@ -100,10 +122,12 @@ When a local job (docker or subprocess) reaches a finished state (successful or 
 The API responds to all GET requests as HTML or JSON depending upon if the request is being originated from Browser or not or if it specifies the format using query parameter ‘f’.
 
 ### Logs
+
 ![](imgs/readme/logs.png)
 Logs are not included in the OGC-API Processes specification, however, for this implementation we have added logs to provide information on the API and Containers.
 
 ### Metadata
+
 ![](imgs/readme/metadata.png)
 Similar to logs, metadata is not included in the OGC-API Processes specification. We have added metadata as an endpoint to provide information on the version of the plugin, the runtime, and the input arguments passed to the container at runtime. Metadata is generated for only successful jobs.
 
@@ -112,4 +136,5 @@ Similar to logs, metadata is not included in the OGC-API Processes specification
 An env file is required and should be available at the root of this repository (`./.env`). See the [example.env](example.env) for a guide.
 
 ## Notes
+
 1. API docs created using [swaggo](https://github.com/swaggo/swag)
