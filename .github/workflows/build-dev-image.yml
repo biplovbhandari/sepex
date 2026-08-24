@@ -1,0 +1,98 @@
+name: Build and Publish Dev Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "api/**"
+      - ".github/workflows/build-dev-image.yml"
+  workflow_dispatch:
+
+# Keep the floating `dev` tag honest: if two pushes land in quick succession,
+# cancel the older run so `dev` can't end up pointing at the earlier commit.
+# Each run writes its own per-commit sha- tag, so cancelling only drops that
+# commit's image and never one another run depends on. (release.yml also
+# publishes a sha- tag to this package, and will overwrite the one for any
+# commit it releases -- same prod stage, only the GIT_TAG stamp differs.)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build API Image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive build version
+        id: version
+        run: |
+          # Matches the 7-char short sha that docker/metadata-action puts in
+          # the sha- tag below, so the version baked into the binary and the
+          # image tag always agree.
+          echo "git_tag=dev-$(echo "${GITHUB_SHA}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=dev,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=sepex
+            org.opencontainers.image.description=sepex image
+            org.opencontainers.image.licenses=MIT
+            maintainer=${{ github.repository_owner }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          # `dev` is the compile stage the local compose stack uses; the image
+          # published here is the same `prod` stage that release.yml ships.
+          target: prod
+          push: true
+          # Same platforms as release.yml, so `dev` is usable on arm64 machines
+          # too. arm64 is built under QEMU; drop it if build time becomes a
+          # problem.
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            GIT_TAG=${{ steps.version.outputs.git_tag }}
+
+      - name: Summarize published tags
+        run: |
+          {
+            echo "### \`sepex\`"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
