@@ -3,7 +3,7 @@ import os
 import urllib.request
 
 # Define the endpoint URL as an environment variable in the Lambda function
-ENDPOINT_URL = os.environ.get("PROCESS_API_URL")
+ENDPOINT_URL = os.environ.get("SEPEX_URL")
 
 
 def map_batch_status_to_ogc_status(batch_status):
