@@ -453,11 +453,11 @@ func (j *DockerJob) WriteMetaData() {
 	}
 
 	p := process{j.ProcessID(), j.ProcessVersionID()}
-	var i image
+	var i *image
 	if j.IMAGE() != "" {
 		// Provenance was captured while the container was running, because the
 		// container is gone by the time this runs. Nothing is resolved here.
-		i = image{
+		i = &image{
 			ImageURI:     j.IMAGE(),
 			ImageDigest:  j.imageDigest,
 			DigestSource: j.digestSource,

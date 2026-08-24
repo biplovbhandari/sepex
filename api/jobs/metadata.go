@@ -57,7 +57,9 @@ type metaData struct {
 	JobID   string `json:"apiJobId"`
 	// User    string  `json:"apiUser"`
 	Process process `json:"process"`
-	Image   image   `json:"image,omitempty"`
+	// Subprocess jobs have no image at all, and the other
+	// host types leave it nil when provenance could not be established.
+	Image *image `json:"image,omitempty"`
 	// RecoveryNotice indicates the job was recovered after restart and metadata may be incomplete.
 	RecoveryNotice string `json:"recoveryNotice,omitempty"`
 	// ComputeEnvironmentURI    string    // ARN
@@ -70,7 +72,7 @@ type metaData struct {
 
 // resolveRegistryDigest asks the image's registry what a tag currently points
 // at. It is only accurate insofar as the tag has not moved since the workload
-// pulled it, so callers must record the result as DigestSourceRegistry rather
+// pulled it, so callers must record the result as DigestSourceTagLookup rather
 // than as the digest that certainly ran.
 func resolveRegistryDigest(imgURI string) (string, error) {
 	switch {

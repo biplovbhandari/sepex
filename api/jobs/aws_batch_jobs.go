@@ -170,7 +170,7 @@ func (j *AWSBatchJob) ensureImageProvenance() {
 // imageProvenance returns what this job ran, capturing it first if the RUNNING
 // hook never got the chance. An empty image means we could not even establish
 // which image reference the job used.
-func (j *AWSBatchJob) imageProvenance() image {
+func (j *AWSBatchJob) imageProvenance() *image {
 	// Normally a no-op: provenance was captured when the job reported RUNNING.
 	// This covers jobs that never reported it and jobs recovered after a
 	// restart, both of which may end up with a weaker source or none at all.
@@ -180,10 +180,10 @@ func (j *AWSBatchJob) imageProvenance() image {
 	defer j.provenanceMu.Unlock()
 
 	if j.Image == "" {
-		return image{}
+		return nil
 	}
 
-	i := image{
+	i := &image{
 		ImageURI:     j.Image,
 		ImageDigest:  j.imageDigest,
 		DigestSource: j.digestSource,
