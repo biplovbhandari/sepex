@@ -53,14 +53,31 @@ func TestRegistryHost(t *testing.T) {
 }
 
 func TestResolveRegistryDigestRejectsUnsupportedRegistry(t *testing.T) {
-	// A registry with no lookup implemented must be reported as such rather
-	// than silently queried against Docker Hub.
-	_, err := resolveRegistryDigest("quay.io/prometheus/node-exporter:v1")
-	if err == nil {
-		t.Fatal("resolveRegistryDigest accepted an unsupported registry, want an error")
+	// A registry with no lookup implemented must say so, naming the registry,
+	// rather than being guessed at against one that does have a lookup.
+	//
+	// Docker Hub is included deliberately: its lookup is not implemented, and
+	// recording no digest is better than recording an arbitrary platform's
+	// manifest digest where every other source yields an index digest.
+	tests := []struct {
+		imgURI string
+		host   string
+	}{
+		{"quay.io/prometheus/node-exporter:v1", "quay.io"},
+		{"localhost:5000/myimg:dev", "localhost:5000"},
+		{"postgres:17.2-alpine3.20", "docker.io"},
+		{"bitnami/postgres:17", "docker.io"},
 	}
-	if !strings.Contains(err.Error(), "quay.io") {
-		t.Errorf("error %q does not name the offending registry", err)
+
+	for _, tt := range tests {
+		_, err := resolveRegistryDigest(tt.imgURI)
+		if err == nil {
+			t.Errorf("resolveRegistryDigest(%q) succeeded, want an unsupported registry error", tt.imgURI)
+			continue
+		}
+		if !strings.Contains(err.Error(), tt.host) {
+			t.Errorf("resolveRegistryDigest(%q) error %q does not name registry %q", tt.imgURI, err, tt.host)
+		}
 	}
 }
 

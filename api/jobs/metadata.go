@@ -83,7 +83,7 @@ func resolveRegistryDigest(imgURI string) (string, error) {
 	case host == "ghcr.io":
 		return getGHCRImageDigest(imgURI, "")
 	case host == "docker.io" || host == "index.docker.io" || host == "registry-1.docker.io":
-		return getDkrHubImageDigest(imgURI, "dummy")
+		return getDkrHubImageDigest(imgURI)
 	default:
 		return "", fmt.Errorf("no digest lookup implemented for registry %s", host)
 	}
@@ -184,56 +184,9 @@ func parseECRImgURI(imgURI string) (string, string, string, error) {
 	return accountID, repositoryName, imageTag, nil
 }
 
-// Get Image Digest from Docker Hub
-// arch based digest not yet implemented, arch is not used
-func getDkrHubImageDigest(imgURI string, arch string) (string, error) {
-	if digestFromRef(imgURI) != "" {
-		return "", fmt.Errorf("reference is digest pinned, there is no tag to resolve: %s", imgURI)
-	}
-
-	parts := strings.Split(imgURI, ":")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid image Name: %s", imgURI)
-	}
-
-	imageName := parts[0]
-	imageTag := parts[1]
-
-	url := fmt.Sprintf("https://hub.docker.com/v2/repositories/%s/tags/%s/images", imageName, imageTag)
-
-	client := http.Client{
-		Timeout: 10 * time.Second, // Set a timeout for the request
-	}
-
-	response, err := client.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("error sending request: %s", err)
-
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading response: %s", err)
-	}
-
-	var result []interface{}
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return "", fmt.Errorf("error parsing JSON: %s", err)
-	}
-
-	if len(result) == 0 {
-		return "", fmt.Errorf("no images returned for %s", imgURI)
-	}
-
-	// Currently it gets just the first image, while there can be more than 1. This is incorrect
-	digest, ok := result[0].(map[string]interface{})["digest"].(string)
-	if !ok {
-		return "", fmt.Errorf("error retrieving image digest")
-	}
-
-	return digest, nil
+// getDkrHubImageDigest is not implemented yet
+func getDkrHubImageDigest(imgURI string) (string, error) {
+	return "", fmt.Errorf("digest lookup for registry docker.io is not implemented: %s", imgURI)
 }
 
 // getGHCRImageDigest fetches the canonical image digest from GHCR for any tag.
