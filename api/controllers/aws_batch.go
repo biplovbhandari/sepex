@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/batch"
 	"github.com/aws/aws-sdk-go/service/ecs"
+	"github.com/labstack/gommon/log"
 )
 
 type AWSBatchController struct {
@@ -255,11 +256,13 @@ func (c *AWSBatchController) GetJobImage(batchID string) (imageURI string, image
 	taskARN := aws.StringValue(container.TaskArn)
 	if taskARN == "" {
 		// EKS backed compute environments have no ECS task.
+		log.Debugf("job %s has no ECS task arn, so no digest can be observed", batchID)
 		return imageURI, "", nil
 	}
 
 	cluster, ok := clusterFromTaskARN(taskARN)
 	if !ok {
+		log.Debugf("job %s has a task arn without a cluster segment (%s), so no digest can be observed", batchID, taskARN)
 		return imageURI, "", nil
 	}
 
@@ -269,7 +272,10 @@ func (c *AWSBatchController) GetJobImage(batchID string) (imageURI string, image
 	})
 	if err != nil {
 		// Most likely the deployment has not been granted ecs:DescribeTasks.
-		// Losing the digest is not a reason to fail the job's metadata.
+		// Losing the digest is not a reason to fail the job's metadata, but it
+		// is the only place the reason is visible, since the caller just sees
+		// an empty digest and falls back to a weaker source.
+		log.Debugf("could not describe ECS task for job %s, so no digest can be observed: %s", batchID, err)
 		return imageURI, "", nil
 	}
 
@@ -280,6 +286,8 @@ func (c *AWSBatchController) GetJobImage(batchID string) (imageURI string, image
 			}
 		}
 	}
+
+	log.Debugf("ECS reported no image digest for job %s, so no digest can be observed", batchID)
 
 	return imageURI, "", nil
 }
