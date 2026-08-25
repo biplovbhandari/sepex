@@ -263,9 +263,12 @@ func (rh *RESTHandler) Execution(c echo.Context) error {
 
 	case "aws-batch":
 		j = &jobs.AWSBatchJob{
-			UUID:           jobID,
-			ProcessName:    processID,
-			Image:          p.Host.Image,
+			UUID:        jobID,
+			ProcessName: processID,
+			// Image is deliberately not set from the process: for aws-batch the
+			// job definition supplies it, so anything written in the yaml has no
+			// bearing on what runs. It is filled in from the job itself when
+			// provenance is captured, and left empty if that never succeeds.
 			Submitter:      submitter,
 			EnvVars:        p.Config.EnvVars,
 			Cmd:            cmd,

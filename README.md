@@ -131,6 +131,16 @@ Logs are not included in the OGC-API Processes specification, however, for this 
 ![](imgs/readme/metadata.png)
 Similar to logs, metadata is not included in the OGC-API Processes specification. We have added metadata as an endpoint to provide information on the version of the plugin, the runtime, and the input arguments passed to the container at runtime. Metadata is generated for only successful jobs.
 
+The `image` block in `metadata` object record which container image the job ran. Because a tag such as `:latest` in processes yaml or AWS Batch job definition can be repointed at any time, the recorded `imageDigest` is not always proof of what executed. A `digestSource` says how it was determined:
+
+| `digestSource` | Meaning | Reliability |
+| --- | --- | --- |
+| `pinned` | The digest was already part of the image reference in process yaml or job definition | Exact |
+| `observed` | The executor reported the digest it actually pulled: the Docker daemon locally, or ECS for AWS Batch. | Exact |
+| `tag-lookup` | We asked the registry what the tag pointed at while the job was running. Almost certainly what ran, but inferred rather than observed. | Inferred |
+| `unavailable` | No digest could be determined. No digest is recorded rather than an unjustified one. | None |
+
+
 ## Example .env file
 
 An env file is required and should be available at the root of this repository (`./.env`). See the [example.env](example.env) for a guide.

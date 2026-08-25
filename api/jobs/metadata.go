@@ -18,9 +18,37 @@ type process struct {
 	ProcessVersion string `json:"processVersion"`
 }
 
+// How a recorded image digest was obtained, strongest first.
+// These are documented for users in the Metadata section of the README, and
+// declared as a term in context.jsonld. Keep all three in sync.
+const (
+	// DigestSourcePinned means the digest was already part of the image
+	// reference, so nothing had to be resolved.
+	DigestSourcePinned = "pinned"
+	// DigestSourceObserved means the executor reported the digest it actually
+	// pulled: the Docker daemon locally, or ECS for AWS Batch.
+	DigestSourceObserved = "observed"
+	// DigestSourceTagLookup means we asked the registry what a mutable tag
+	// pointed at. Done while the job was running, so it is almost certainly
+	// what ran, but it is inference rather than observation.
+	DigestSourceTagLookup = "tag-lookup"
+	// DigestSourceUnavailable means no digest could be determined.
+	DigestSourceUnavailable = "unavailable"
+)
+
 type image struct {
-	ImageURI    string `json:"imageURI"`
-	ImageDigest string `json:"imageDigest"`
+	ImageURI     string `json:"imageURI"`
+	ImageDigest  string `json:"imageDigest,omitempty"`
+	DigestSource string `json:"digestSource,omitempty"`
+}
+
+// digestFromRef returns the digest embedded in a pinned image reference
+// (repo@sha256:...), or an empty string when the reference is not pinned.
+func digestFromRef(imgURI string) string {
+	if i := strings.LastIndex(imgURI, "@"); i != -1 {
+		return imgURI[i+1:]
+	}
+	return ""
 }
 
 // Define a metaData object
@@ -29,7 +57,9 @@ type metaData struct {
 	JobID   string `json:"apiJobId"`
 	// User    string  `json:"apiUser"`
 	Process process `json:"process"`
-	Image   image   `json:"image,omitempty"`
+	// Subprocess jobs have no image at all, and the other
+	// host types leave it nil when provenance could not be established.
+	Image *image `json:"image,omitempty"`
 	// RecoveryNotice indicates the job was recovered after restart and metadata may be incomplete.
 	RecoveryNotice string `json:"recoveryNotice,omitempty"`
 	// ComputeEnvironmentURI    string    // ARN
@@ -38,6 +68,44 @@ type metaData struct {
 	GeneratedAtTime time.Time `json:"generatedAtTime"` // not implemented
 	StartedAtTime   time.Time `json:"startedAtTime"`   // not implemented
 	EndedAtTime     time.Time `json:"endedAtTime"`
+}
+
+// resolveRegistryDigest asks the image's registry what a tag currently points
+// at. It is only accurate insofar as the tag has not moved since the workload
+// pulled it, so callers must record the result as DigestSourceTagLookup rather
+// than as the digest that certainly ran.
+func resolveRegistryDigest(imgURI string) (string, error) {
+	host := registryHost(imgURI)
+
+	switch {
+	case strings.HasSuffix(host, "amazonaws.com"):
+		return getECRImageDigest(imgURI)
+	case host == "ghcr.io":
+		return getGHCRImageDigest(imgURI, "")
+	case host == "docker.io" || host == "index.docker.io" || host == "registry-1.docker.io":
+		return getDkrHubImageDigest(imgURI)
+	default:
+		return "", fmt.Errorf("no digest lookup implemented for registry %s", host)
+	}
+}
+
+// registryHost returns the registry an image reference resolves to, following
+// the same rule the docker CLI uses: the first path segment is a hostname only
+// when it contains a dot or a colon, or is exactly `localhost`. Anything else
+// is Docker Hub, so `postgres` and `bitnami/postgres` both live there.
+func registryHost(imgURI string) string {
+	first, _, found := strings.Cut(imgURI, "/")
+	if !found {
+		// No path separator at all, so the whole reference is a Docker Hub
+		// official image name and any colon in it is the tag.
+		return "docker.io"
+	}
+
+	if strings.ContainsAny(first, ".:") || first == "localhost" {
+		return first
+	}
+
+	return "docker.io"
 }
 
 // Get image digest from ecr
@@ -83,74 +151,52 @@ func getECRImageDigest(imgURI string) (string, error) {
 
 // Helper function to parse the ECR Image URI
 func parseECRImgURI(imgURI string) (string, string, string, error) {
-	// Split the repository URI into account ID, repository name, and image tag
-	parts := strings.Split(imgURI, "/")
-	if len(parts) != 2 {
+	// A digest pinned reference carries its digest already, so callers must
+	// read it with digestFromRef rather than asking the registry to resolve a
+	// tag that is not there.
+	if digestFromRef(imgURI) != "" {
+		return "", "", "", fmt.Errorf("reference is digest pinned, there is no tag to resolve: %s", imgURI)
+	}
+
+	// Split the repository URI into registry host, repository name, and image
+	// tag. The repository name may itself contain slashes, so only the first
+	// separator delimits the host.
+	registry, repoWithTag, found := strings.Cut(imgURI, "/")
+	if !found {
 		return "", "", "", fmt.Errorf("invalid repository URI: %s", imgURI)
 	}
 
-	accountID := strings.Split(parts[0], ".")[0]
-	imageWithTag := parts[1]
+	accountID := strings.Split(registry, ".")[0]
 
-	imageParts := strings.SplitN(imageWithTag, ":", 2)
-	if len(imageParts) != 2 {
+	// Tags cannot contain a colon, so the last one separates name from tag.
+	i := strings.LastIndex(repoWithTag, ":")
+	if i == -1 {
 		return "", "", "", fmt.Errorf("invalid image tag in repository URI: %s", imgURI)
 	}
 
-	repositoryName := imageParts[0]
-	imageTag := imageParts[1]
+	repositoryName := repoWithTag[:i]
+	imageTag := repoWithTag[i+1:]
+
+	if repositoryName == "" || imageTag == "" {
+		return "", "", "", fmt.Errorf("invalid image tag in repository URI: %s", imgURI)
+	}
 
 	return accountID, repositoryName, imageTag, nil
 }
 
-// Get Image Digest from Docker Hub
-// arch based digest not yet implemented, arch is not used
-func getDkrHubImageDigest(imgURI string, arch string) (string, error) {
-	parts := strings.Split(imgURI, ":")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid image Name: %s", imgURI)
-	}
-
-	imageName := parts[0]
-	imageTag := parts[1]
-
-	url := fmt.Sprintf("https://hub.docker.com/v2/repositories/%s/tags/%s/images", imageName, imageTag)
-
-	client := http.Client{
-		Timeout: 10 * time.Second, // Set a timeout for the request
-	}
-
-	response, err := client.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("error sending request: %s", err)
-
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading response: %s", err)
-	}
-
-	var result []interface{}
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return "", fmt.Errorf("error parsing JSON: %s", err)
-	}
-
-	// Currently it gets just the first image, while there can be more than 1. This is incorrect
-	digest, ok := result[0].(map[string]interface{})["digest"].(string)
-	if !ok {
-		return "", fmt.Errorf("error retrieving image digest")
-	}
-
-	return digest, nil
+// getDkrHubImageDigest is not implemented yet
+func getDkrHubImageDigest(imgURI string) (string, error) {
+	return "", fmt.Errorf("digest lookup for registry docker.io is not implemented: %s", imgURI)
 }
 
 // getGHCRImageDigest fetches the canonical image digest from GHCR for any tag.
 // If token is empty, it fetches an anonymous token for public repositories.
 // GHCR requires authentication even for public images.
 func getGHCRImageDigest(imgURI, token string) (string, error) {
+	if digestFromRef(imgURI) != "" {
+		return "", fmt.Errorf("reference is digest pinned, there is no tag to resolve: %s", imgURI)
+	}
+
 	// Split repository and tag
 	parts := strings.Split(imgURI, ":")
 	if len(parts) != 2 {

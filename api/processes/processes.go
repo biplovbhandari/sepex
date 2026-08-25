@@ -103,6 +103,81 @@ type inpOccurance struct {
 	maxOccur int
 }
 
+// jobDefIsPinned reports whether an AWS Batch job definition reference names a
+// specific revision, as `name:revision` or as an ARN ending in one. A reference
+// without a revision is resolved by Batch to the latest active revision at
+// submission, so what it runs can change without the plugin changing.
+func jobDefIsPinned(jobDef string) bool {
+	name := jobDef
+	if i := strings.LastIndex(name, "/"); i != -1 {
+		name = name[i+1:] // drop any ARN prefix
+	}
+
+	i := strings.LastIndex(name, ":")
+	if i == -1 {
+		return false
+	}
+
+	revision := name[i+1:]
+	if revision == "" {
+		return false
+	}
+	for _, r := range revision {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return true
+}
+
+// warnIfUnpinned reports how reproducible a process is without blocking it.
+func (p Process) warnIfUnpinned() {
+	switch p.Host.Type {
+	case "aws-batch":
+		if !jobDefIsPinned(p.Host.JobDefinition) {
+			log.Warnf(
+				"process %s: job definition %q has no revision, so Batch will run whichever revision is latest at submission. Pin it as name:revision for reproducible runs.",
+				p.Info.ID, p.Host.JobDefinition,
+			)
+			// Without a revision there is no single definition to inspect, so
+			// there is nothing further to check.
+			return
+		}
+
+		c, err := controllers.NewAWSBatchController()
+		if err != nil {
+			log.Warnf("process %s: could not check whether the job definition image is pinned: %v", p.Info.ID, err)
+			return
+		}
+
+		img, err := c.GetJobDefImage(p.Host.JobDefinition)
+		if err != nil {
+			log.Warnf("process %s: could not check whether the job definition image is pinned: %v", p.Info.ID, err)
+			return
+		}
+
+		if !strings.Contains(img, "@sha256:") {
+			log.Warnf(
+				"process %s: job definition %s uses image %q, which is a moving tag. Register a revision with a digest pinned image for reproducible runs.",
+				p.Info.ID, p.Host.JobDefinition, img,
+			)
+		}
+
+	case "docker":
+		if !strings.Contains(p.Host.Image, "@sha256:") {
+			log.Warnf(
+				"process %s: image %q is a moving tag, so its contents can change without the plugin changing. Pin it as repository@sha256:... for reproducible runs.",
+				p.Info.ID, p.Host.Image,
+			)
+		}
+
+	case "subprocess":
+		// A subprocess runs against whatever is installed on the host. There is
+		// no image or artifact to pin, so there is nothing to warn about.
+	}
+}
+
 func (p Process) VerifyInputs(inp map[string]interface{}) error {
 
 	requestInp := make(map[string]*inpOccurance)
@@ -212,21 +287,13 @@ func MarshallProcess(f string) (Process, error) {
 		return Process{}, err
 	}
 
-	// if processes is AWS Batch process get its resources, image, etc
-	// the problem with doing this here is that if the job definition is updated while we are doing this, our process info will not update
 	switch p.Host.Type {
 	case "aws-batch":
-		c, err := controllers.NewAWSBatchController()
-		if err != nil {
-			return Process{}, err
-		}
-		jdi, err := c.GetJobDefInfo(p.Host.JobDefinition)
-		if err != nil {
-			return Process{}, err
-		}
-		p.Host.Image = jdi.Image
-		p.Config.Resources.Memory = jdi.Memory // although we are fetching this information but is not being used anywhere or reported to users
-		p.Config.Resources.CPUs = jdi.VCPUs    // although we are fetching this information but is not being used anywhere or reported to users
+		// The job definition reference is served exactly as the author wrote
+		// it. Resolving it here would have frozen an answer that Batch resolves
+		// again at submission, and a failed lookup would have dropped the
+		// process from the catalog entirely. What a job actually ran is
+		// recorded per job, in its metadata, instead.
 	case "docker", "subprocess":
 		// Set default resources if not specified in config
 		if p.Config.Resources.CPUs == 0 {
@@ -333,6 +400,11 @@ func (p *Process) Validate(maxCPUs float32, maxMemory int) error {
 	if p.Host.Type == "aws-batch" && (p.Host.JobQueue == "" || p.Host.JobDefinition == "") {
 		return errors.New("job information is required for aws-batch host type")
 	}
+
+	// Reproducibility advice. None of this blocks a process from registering:
+	// an unpinned process still runs, it just cannot promise that two runs of
+	// the same process version execute the same code.
+	p.warnIfUnpinned()
 
 	// Validate Environment Variables available
 	if err := p.VerifyLocalEnvars(); err != nil {

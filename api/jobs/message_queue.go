@@ -20,6 +20,13 @@ type MessageQueue struct {
 	JobDone    chan Job
 }
 
+// imageProvenanceCapturer is implemented by job types whose image can only be
+// identified while the workload is running. Docker jobs capture theirs inline
+// and do not need this.
+type imageProvenanceCapturer interface {
+	ensureImageProvenance()
+}
+
 // Job should not be a docker job
 // This function should not block the routine as it is being called by message queue
 func ProcessStatusMessageUpdate(sm StatusMessage) {
@@ -33,6 +40,14 @@ func ProcessStatusMessageUpdate(sm StatusMessage) {
 	(*sm.Job).NewStatusUpdate(sm.Status, sm.LastUpdate)
 
 	switch sm.Status {
+	case RUNNING:
+		// The workload is up, so record what it is running while the evidence
+		// is still reachable. Doing this after the job finishes is too late for
+		// AWS Batch, whose ECS task stops being describable soon afterwards.
+		if capturer, ok := (*sm.Job).(imageProvenanceCapturer); ok {
+			go capturer.ensureImageProvenance()
+		}
+
 	case SUCCESSFUL:
 		go (*sm.Job).WriteMetaData()
 		fallthrough

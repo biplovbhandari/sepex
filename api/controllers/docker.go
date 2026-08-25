@@ -34,6 +34,10 @@ type ContainerInfo struct {
 	Exists   bool
 	Running  bool
 	ExitCode int
+	// ImageID is the local id of the image the container was created from. It
+	// is fixed for the container's lifetime, so it identifies what actually
+	// ran even if the tag it was started from moves later.
+	ImageID string
 }
 
 type DockerController struct {
@@ -192,6 +196,13 @@ func (c *DockerController) EnsureImage(ctx context.Context, imageName string, ve
 				return nil
 			}
 		}
+		// A digest pinned reference never appears in RepoTags, so without this
+		// every job with a pinned image would fall through to a fresh pull.
+		for _, repoDigest := range img.RepoDigests {
+			if strings.EqualFold(repoDigest, imageName) {
+				return nil
+			}
+		}
 	}
 
 	reader, err := c.cli.ImagePull(ctx, imageName, image.PullOptions{})
@@ -213,18 +224,6 @@ func (c *DockerController) EnsureImage(ctx context.Context, imageName string, ve
 	}
 
 	return nil
-}
-
-// Get Image Digest from Image URI
-func (c *DockerController) GetImageDigest(imageURI string) (string, error) {
-	ctx := context.Background()
-	imageInspect, _, err := c.cli.ImageInspectWithRaw(ctx, imageURI)
-	if err != nil {
-		return "", err
-	}
-	// Get the digest from the image inspect response
-	imageDigest := imageInspect.ID
-	return imageDigest, nil
 }
 
 // Get job execution times
@@ -277,5 +276,26 @@ func (c *DockerController) ContainerInfo(ctx context.Context, containerID string
 		Exists:   true,
 		Running:  running,
 		ExitCode: exitCode,
+		ImageID:  inspect.Image,
 	}, nil
+}
+
+// ImageRepoDigest returns the registry manifest digest of an image, which is
+// the same kind of value AWS Batch jobs record, so digests are comparable
+// across host types. Images built locally and never pushed have no repo digest
+// and are reported as an error rather than falling back to the local image id,
+// which is a different kind of identifier.
+func (c *DockerController) ImageRepoDigest(ctx context.Context, imageID string) (string, error) {
+	imageInspect, _, err := c.cli.ImageInspectWithRaw(ctx, imageID)
+	if err != nil {
+		return "", err
+	}
+
+	for _, repoDigest := range imageInspect.RepoDigests {
+		if i := strings.LastIndex(repoDigest, "@"); i != -1 {
+			return repoDigest[i+1:], nil
+		}
+	}
+
+	return "", fmt.Errorf("image %s has no repo digest, it was likely built locally and never pushed", imageID)
 }

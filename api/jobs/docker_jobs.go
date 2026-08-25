@@ -41,6 +41,12 @@ type DockerJob struct {
 	logger         *log.Logger
 	logFile        *os.File
 
+	// Image provenance, captured while the container is running and read back
+	// when metadata is written. Recovered jobs never captured it and leave
+	// these empty.
+	imageDigest  string
+	digestSource string
+
 	Resources
 	DB           Database
 	StorageSvc   *s3.S3
@@ -80,6 +86,49 @@ func (j *DockerJob) CMD() []string {
 
 func (j *DockerJob) IMAGE() string {
 	return j.Image
+}
+
+// captureImageProvenance records which image the container actually started
+// from. A digest pinned reference already carries the answer; otherwise the
+// container is asked for the image it was created from, and that image's
+// registry digest is read back so the value is comparable with the digests
+// recorded for AWS Batch jobs.
+//
+// Must be called while the container still exists. It is idempotent so that a
+// later caller can rely on the first successful capture.
+func (j *DockerJob) captureImageProvenance(c *controllers.DockerController) {
+	if j.imageDigest != "" || j.Image == "" {
+		return
+	}
+
+	if digest := digestFromRef(j.Image); digest != "" {
+		j.imageDigest = digest
+		j.digestSource = DigestSourcePinned
+		return
+	}
+
+	j.digestSource = DigestSourceUnavailable
+
+	// Deliberately not j.ctx: a dismiss signal arriving mid capture should not
+	// cost us the record of what ran.
+	info, err := c.ContainerInfo(context.TODO(), j.ContainerID)
+	if err != nil {
+		j.logger.Warnf("Could not inspect container for image provenance: %s", err.Error())
+		return
+	}
+	if !info.Exists || info.ImageID == "" {
+		j.logger.Warnf("Container %s reported no image id, recording image without a digest", j.ContainerID)
+		return
+	}
+
+	digest, err := c.ImageRepoDigest(context.TODO(), info.ImageID)
+	if err != nil {
+		j.logger.Warnf("Could not determine image digest: %s", err.Error())
+		return
+	}
+
+	j.imageDigest = digest
+	j.digestSource = DigestSourceObserved
 }
 
 func (j *DockerJob) GetResources() Resources {
@@ -329,6 +378,9 @@ func (j *DockerJob) Run() {
 	j.ContainerID = containerID
 	j.DB.updateJobHostId(j.UUID, containerID)
 
+	// Record what actually ran
+	j.captureImageProvenance(c)
+
 	// Check if job was cancelled (Kill() was called) before waiting for container
 	select {
 	case <-j.ctx.Done():
@@ -401,18 +453,17 @@ func (j *DockerJob) WriteMetaData() {
 	}
 
 	p := process{j.ProcessID(), j.ProcessVersionID()}
-	var i image
+	var i *image
 	if j.IMAGE() != "" {
-		if c == nil {
-			i = image{ImageURI: j.IMAGE()}
-		} else {
-			imageDigest, err := c.GetImageDigest(j.IMAGE()) // what if image is update between start of job and this call?
-			if err != nil {
-				j.logger.Errorf("Error getting Image Digest: %s", err.Error())
-				i = image{ImageURI: j.IMAGE()}
-			} else {
-				i = image{j.IMAGE(), imageDigest}
-			}
+		// Provenance was captured while the container was running, because the
+		// container is gone by the time this runs. Nothing is resolved here.
+		i = &image{
+			ImageURI:     j.IMAGE(),
+			ImageDigest:  j.imageDigest,
+			DigestSource: j.digestSource,
+		}
+		if i.DigestSource == "" {
+			i.DigestSource = DigestSourceUnavailable
 		}
 	}
 
