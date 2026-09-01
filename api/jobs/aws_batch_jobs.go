@@ -225,7 +225,7 @@ func (j *AWSBatchJob) UpdateProcessLogs() (err error) {
 	}
 
 	if len(containerLogs) == 0 {
-		return
+		return fmt.Errorf("cloud watch logs not yet available for job %s", j.UUID)
 	}
 
 	file, err := os.OpenFile(fmt.Sprintf("%s/%s.process.jsonl", os.Getenv("TMP_JOB_LOGS_DIR"), j.UUID), os.O_APPEND|os.O_WRONLY, 0666)
